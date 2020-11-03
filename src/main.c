@@ -4,6 +4,8 @@
 #include <time.h>
 #include <gmp.h>
 
+typedef uint8_t BYTE;
+
 struct rsa_pub
 {
     mpz_t e;
@@ -18,54 +20,97 @@ struct rsa_prv
 };
 typedef struct rsa_prv rsa_prv_s;
 
-int init_rsa(void); // rand init etc etc, return 1 if error occured
+// ---
+// return 1 if error occured
+// ---
 
-// gen rsa key, return 1 if error occured
-int gen_rsa(rsa_pub_s *pubk, rsa_prv_s *prvk, uint16_t keysize);
+int rsa_init(void);
+
+int rsa_init_pub(rsa_pub_s *pubk);
+
+int rsa_init_prv(rsa_prv_s *prvk);
+
+int rsa_encrypt_block(rsa_pub_s *pubk, BYTE *dst, BYTE *src, size_t len);
+
+int rsa_decrypt_block(rsa_prv_s *prvk, BYTE *dst, BYTE *src, size_t len);
+
+int rsa_gen(rsa_pub_s *pubk, rsa_prv_s *prvk, uint16_t keysize);
+
 
 int main(void)
 {
-    if (init_rsa() != 0) /* There is an error */
+    if (rsa_init() != 0) /* There is an error */
     {
         printf("Error an occured when initializing\n");
         exit(EXIT_FAILURE);
     }
 
     rsa_pub_s pubk;
+    rsa_init_pub(&pubk);
     rsa_prv_s prvk;
+    rsa_init_prv(&prvk);
 
-    if (gen_rsa(&pubk, &prvk, 16) != 0)
+    if (rsa_gen(&pubk, &prvk, 4096) != 0)
     {
         printf("Error an occured when generate key\n");
         exit(EXIT_FAILURE);
     }
-    if (gen_rsa(&pubk, &prvk, 16) != 0)
-    {
-        printf("Error an occured when generate key\n");
-        exit(EXIT_FAILURE);
-    }
-    if (gen_rsa(&pubk, &prvk, 16) != 0)
-    {
-        printf("Error an occured when generate key\n");
-        exit(EXIT_FAILURE);
-    }
-    if (gen_rsa(&pubk, &prvk, 16) != 0)
-    {
-        printf("Error an occured when generate key\n");
-        exit(EXIT_FAILURE);
-    }
+
+    char buf[10000] = {0};
+    mpz_get_str(buf, 16, pubk.e);
+    printf("E : %s\n", buf);
+    mpz_get_str(buf, 16, prvk.d);
+    printf("D : %s\n", buf);
+    mpz_get_str(buf, 16, pubk.n);
+    printf("N : %s\n", buf);
 
     return EXIT_SUCCESS;
 }
 
-int init_rsa(void)
+int rsa_init(void)
 {
     srand(time(NULL));
 
     return 0;
 }
 
-int gen_rsa(rsa_pub_s *pubk, rsa_prv_s *prvk, uint16_t sbitk)
+int rsa_init_pub(rsa_pub_s *pubk)
+{
+    mpz_inits(pubk->e, pubk->n, NULL);
+    return 0;
+}
+
+int rsa_init_prv(rsa_prv_s *prvk)
+{
+    mpz_inits(prvk->d, prvk->n, NULL);
+    return 0;
+}
+
+int rsa_encrypt_block(rsa_pub_s *pubk, BYTE *dst, BYTE *src, size_t len) // M^e % n
+{
+    mpz_t m;
+    mpz_init(m);
+
+    mpz_import(m, len, 1, sizeof(src[0]), 0, 0, src);
+
+    mpz_powm(m, m, pubk->e, pubk->n);
+
+    // TODO : export
+
+    return 0;
+}
+
+int rsa_decrypt_block(rsa_prv_s *prvk, BYTE *dst, BYTE *src, size_t len) // M^d % n
+{
+    mpz_t c;
+    mpz_init(c);
+
+    mpz_powm(c, c, prvk->d, prvk->n);
+
+    return 0;
+}
+
+int rsa_gen(rsa_pub_s *pubk, rsa_prv_s *prvk, uint16_t sbitk)
 {
     size_t keysize = (sbitk / 8);
     size_t pqsize = keysize / 2;
@@ -117,6 +162,12 @@ int gen_rsa(rsa_pub_s *pubk, rsa_prv_s *prvk, uint16_t sbitk)
     // Choice next prime for q
     mpz_nextprime(q, q);
 
+    /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+     * 
+     * All necessary numbers are generated at this state.
+     * 
+     * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * **/
+
     // ---
     // Calculate n = p * q
     // ---
@@ -130,19 +181,12 @@ int gen_rsa(rsa_pub_s *pubk, rsa_prv_s *prvk, uint16_t sbitk)
     mpz_sub_ui(p_1, p, 1);
     mpz_sub_ui(q_1, q, 1);
     mpz_mul(phi, p_1, q_1);
-
-    char test[10000] = {0};
-    mpz_get_str(test, 10, p);
-    printf("P : %s\n", test);
-    mpz_get_str(test, 10, q);
-    printf("Q : %s\n", test);
-    mpz_get_str(test, 10, n);
-    printf("N : %s\n", test);
     
     // ---
     // Calculate e
     // ---
 
+    // Init random state of GMP
     gmp_randstate_t state;
     gmp_randinit_mt(state);
     gmp_randseed_ui(state, rand());
@@ -153,16 +197,19 @@ int gen_rsa(rsa_pub_s *pubk, rsa_prv_s *prvk, uint16_t sbitk)
         mpz_gcd(gcd, e, phi);
     } while (mpz_cmp_ui(gcd, 1) != 0 || mpz_cmp_ui(e, 0) == 0);
 
-    mpz_get_str(test, 10, e);
-    printf("E : %s\n", test);
+    
+    // ---
+    // Calculate d
+    // ---
 
     if (mpz_invert(d, e, phi) == 0)
     {
         printf("Invert failed\n");
+        // Free buffers and tempory variable
+        free(buf);
+        mpz_clears(p, q, p_1, q_1, phi, n, e, d, gcd, NULL);
+        return 1;
     }
-
-    mpz_get_str(test, 10, d);
-    printf("D : %s\n\n", test);
 
     // ---
     // Key generation finish let's save
