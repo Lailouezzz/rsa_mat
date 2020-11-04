@@ -73,5 +73,7 @@ int main(void)
     }
     printf("\n");
 
+    free(cdata);
+    free(dcdata);
     return EXIT_SUCCESS;
 }

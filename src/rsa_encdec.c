@@ -76,7 +76,7 @@ int rsa_encrypt(rsa_pub_s *pubk, BYTE *dst, BYTE *src, size_t *len)
 
             rsa_encrypt_block(pubk, dst+offdst, buf);
             offdst += keysize;
-
+            free(buf);
             break;
         }
         
@@ -94,7 +94,7 @@ int rsa_encrypt(rsa_pub_s *pubk, BYTE *dst, BYTE *src, size_t *len)
     return 0;
 }
 
-size_t rsa_decrypt_final_maxsize(rsa_pub_s *prvk, size_t inlen)
+size_t rsa_decrypt_final_maxsize(rsa_prv_s *prvk, size_t inlen)
 {
     size_t blocksize = ((mpz_sizeinbase(prvk->n, 2) + 7) / 8) - 1;
     size_t keysize = (mpz_sizeinbase(prvk->n, 2) + 7) / 8;
